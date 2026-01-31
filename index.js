@@ -26,10 +26,27 @@ io.on("connection", (socket) => {
   console.log("Socket connected (authorized)");
 
   socket.on("register-device", (deviceId) => {
-    devices[deviceId] = socket;
-    socket.deviceId = deviceId;
-    console.log("Device registered:", deviceId);
-  });
+  // If device already exists, replace it (reboot case)
+  if (devices[deviceId]) {
+    console.log("Device reconnected, replacing socket:", deviceId);
+    try {
+      devices[deviceId].disconnect(true);
+    } catch (_) {}
+  }
+
+  devices[deviceId] = socket;
+  socket.deviceId = deviceId;
+
+  console.log("Device registered:", deviceId);
+
+  // 🔴 IMPORTANT: notify all viewers that device is back
+  if (viewers[deviceId]) {
+    for (const viewer of viewers[deviceId]) {
+      viewer.emit("device-online", deviceId);
+    }
+  }
+});
+
 
   socket.on("watch-device", (deviceId) => {
     if (!viewers[deviceId]) viewers[deviceId] = new Set();
