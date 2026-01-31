@@ -5,15 +5,15 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
 });
 
 // ===== CONFIG =====
 const RELAY_TOKEN = process.env.RELAY_TOKEN || "piR3m0t3_9f8a2c4d_token";
 // ==================
 
-const devices = {};   // deviceId -> socket
-const viewers = {};   // deviceId -> Set<sockets>
+const devices = {}; // deviceId -> socket
+const viewers = {}; // deviceId -> Set<sockets>
 
 // ---------- AUTH ----------
 io.use((socket, next) => {
@@ -107,12 +107,20 @@ io.on("connection", (socket) => {
     }
   });
   socket.on("REQUEST_STATUS", (payload) => {
-  const { deviceId } = payload;
-  if (devices[deviceId]) {
-    devices[deviceId].emit("REQUEST_STATUS", payload);
-  }
-});
+    const { deviceId } = payload;
+    if (devices[deviceId]) {
+      devices[deviceId].emit("REQUEST_STATUS", payload);
+    }
+  });
+  socket.on("RECORDINGS_LIST", (payload) => {
+    const { deviceId } = payload;
 
+    if (viewers[deviceId]) {
+      viewers[deviceId].forEach((viewer) => {
+        viewer.emit("RECORDINGS_LIST", payload);
+      });
+    }
+  });
 
   // ---------- DISCONNECT (CRITICAL FIX) ----------
   socket.on("disconnect", () => {
