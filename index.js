@@ -85,6 +85,16 @@ socket.on("disconnect", () => {
     viewers[socket.watchDevice].delete(socket);
   }
 });
+// Pi → Dashboard: status updates
+socket.on("STATUS_UPDATE", (payload) => {
+  const { deviceId } = payload;
+
+  if (viewers[deviceId]) {
+    for (const viewer of viewers[deviceId]) {
+      viewer.emit("STATUS_UPDATE", payload);
+    }
+  }
+});
 
  
 });
