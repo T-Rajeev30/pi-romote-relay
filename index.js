@@ -45,12 +45,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("terminal-output", ({ deviceId, data }) => {
-    if (viewers[deviceId]) {
-      for (const viewer of viewers[deviceId]) {
-        viewer.emit("terminal-output", data);
-      }
+  if (viewers[deviceId]) {
+    for (const viewer of viewers[deviceId]) {
+      viewer.emit("terminal-output", { deviceId, data });
     }
-  });
+  }
+});
+
 
   socket.on("disconnect", () => {
     if (socket.deviceId) delete devices[socket.deviceId];
