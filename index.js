@@ -69,13 +69,24 @@ io.on("connection", (socket) => {
   }
 });
 
+socket.on("disconnect", () => {
+  if (socket.deviceId && devices[socket.deviceId] === socket) {
+    console.log("Device disconnected:", socket.deviceId);
+    delete devices[socket.deviceId];
 
-  socket.on("disconnect", () => {
-    if (socket.deviceId) delete devices[socket.deviceId];
-    if (socket.watchDevice && viewers[socket.watchDevice]) {
-      viewers[socket.watchDevice].delete(socket);
+    if (viewers[socket.deviceId]) {
+      for (const viewer of viewers[socket.deviceId]) {
+        viewer.emit("device-offline", socket.deviceId);
+      }
     }
-  });
+  }
+
+  if (socket.watchDevice && viewers[socket.watchDevice]) {
+    viewers[socket.watchDevice].delete(socket);
+  }
+});
+
+ 
 });
 
 app.get("/", (_, res) => res.send("Secure Pi Relay Running"));
