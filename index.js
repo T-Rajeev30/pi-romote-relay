@@ -23,11 +23,12 @@ io.on("connection", (socket) => {
 
   // Browser registers interest in a device
   socket.on("watch-device", (deviceId) => {
-    if (!viewers[deviceId]) viewers[deviceId] = new Set();
-    viewers[deviceId].add(socket);
-    socket.watchDevice = deviceId;
-    console.log("Viewer watching:", deviceId);
-  });
+  console.log("Viewer watching device:", deviceId);
+  if (!viewers[deviceId]) viewers[deviceId] = new Set();
+  viewers[deviceId].add(socket);
+  socket.watchDevice = deviceId;
+});
+
 
   // Input from browser → Pi
   socket.on("terminal-input", ({ deviceId, data }) => {
