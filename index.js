@@ -106,6 +106,13 @@ io.on("connection", (socket) => {
       devices[deviceId].emit("STOP_RECORDING");
     }
   });
+  socket.on("REQUEST_STATUS", (payload) => {
+  const { deviceId } = payload;
+  if (devices[deviceId]) {
+    devices[deviceId].emit("REQUEST_STATUS", payload);
+  }
+});
+
 
   // ---------- DISCONNECT (CRITICAL FIX) ----------
   socket.on("disconnect", () => {
