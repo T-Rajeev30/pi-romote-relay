@@ -5,34 +5,50 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: { origin: "*" }
 });
 
-const devices = {}; // deviceId -> socket
+const devices = {};   // deviceId -> socket
+const viewers = {};   // deviceId -> Set of sockets
 
 io.on("connection", (socket) => {
   console.log("Socket connected");
 
+  // Pi registers itself
   socket.on("register-device", (deviceId) => {
     devices[deviceId] = socket;
     socket.deviceId = deviceId;
     console.log("Device registered:", deviceId);
   });
 
+  // Browser registers interest in a device
+  socket.on("watch-device", (deviceId) => {
+    if (!viewers[deviceId]) viewers[deviceId] = new Set();
+    viewers[deviceId].add(socket);
+    socket.watchDevice = deviceId;
+    console.log("Viewer watching:", deviceId);
+  });
+
+  // Input from browser → Pi
   socket.on("terminal-input", ({ deviceId, data }) => {
     if (devices[deviceId]) {
       devices[deviceId].emit("terminal-input", data);
     }
   });
 
+  // Output from Pi → all viewers
   socket.on("terminal-output", ({ deviceId, data }) => {
-    socket.broadcast.emit("terminal-output", { deviceId, data });
+    if (viewers[deviceId]) {
+      for (const viewer of viewers[deviceId]) {
+        viewer.emit("terminal-output", data);
+      }
+    }
   });
 
   socket.on("disconnect", () => {
-    if (socket.deviceId) {
-      delete devices[socket.deviceId];
-      console.log("Device disconnected:", socket.deviceId);
+    if (socket.deviceId) delete devices[socket.deviceId];
+    if (socket.watchDevice && viewers[socket.watchDevice]) {
+      viewers[socket.watchDevice].delete(socket);
     }
   });
 });
