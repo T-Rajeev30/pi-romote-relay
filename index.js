@@ -54,7 +54,9 @@ io.on("connection", (socket) => {
 
   /* ----- request status ----- */
   socket.on("REQUEST_STATUS", ({ deviceId }) => {
-    devices[deviceId]?.emit("REQUEST_STATUS");
+    if (devices[deviceId]) {
+      devices[deviceId].emit("REQUEST_STATUS");
+    }
   });
 
   /* ----- recording control ----- */
