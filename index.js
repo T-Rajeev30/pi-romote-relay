@@ -4,21 +4,19 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" },
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
-// ===== CONFIG =====
+// ---------- CONFIG ----------
 const RELAY_TOKEN = process.env.RELAY_TOKEN || "piR3m0t3_9f8a2c4d_token";
-// ==================
+// ----------------------------
 
-const devices = {}; // deviceId -> socket
+// 🔴 SEPARATE STORAGE (IMPORTANT)
+const deviceSockets = {}; // deviceId -> socket
 const viewers = {}; // deviceId -> Set<sockets>
 
 // ---------- AUTH ----------
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token;
-  if (token !== RELAY_TOKEN) {
+  if (socket.handshake.auth?.token !== RELAY_TOKEN) {
     return next(new Error("unauthorized"));
   }
   next();
@@ -26,36 +24,32 @@ io.use((socket, next) => {
 
 // ---------- SOCKET ----------
 io.on("connection", (socket) => {
-  console.log("Socket connected (authorized)");
-
   socket.role = "unknown";
   socket.deviceId = null;
   socket.watchDevice = null;
 
-  // ---------- DEVICE REGISTER ----------
+  console.log("Socket connected");
+
+  // ----- DEVICE REGISTER -----
   socket.on("register-device", (deviceId) => {
     socket.role = "device";
     socket.deviceId = deviceId;
 
-    // Handle device reboot / reconnect
-    if (devices[deviceId]) {
+    if (deviceSockets[deviceId]) {
       try {
-        devices[deviceId].disconnect(true);
+        deviceSockets[deviceId].disconnect(true);
       } catch {}
     }
 
-    devices[deviceId] = socket;
+    deviceSockets[deviceId] = socket;
     console.log("Device registered:", deviceId);
 
-    // Notify viewers device is online
     if (viewers[deviceId]) {
-      for (const v of viewers[deviceId]) {
-        v.emit("device-online", deviceId);
-      }
+      viewers[deviceId].forEach((v) => v.emit("device-online", deviceId));
     }
   });
 
-  // ---------- VIEWER WATCH ----------
+  // ----- VIEWER WATCH -----
   socket.on("watch-device", (deviceId) => {
     socket.role = "viewer";
     socket.watchDevice = deviceId;
@@ -66,79 +60,45 @@ io.on("connection", (socket) => {
     console.log("Viewer watching:", deviceId);
   });
 
-  // ---------- TERMINAL INPUT (Browser → Pi) ----------
-  socket.on("terminal-input", ({ deviceId, data }) => {
-    if (devices[deviceId]) {
-      devices[deviceId].emit("terminal-input", data);
-    }
-  });
-
-  // ---------- TERMINAL OUTPUT (Pi → Browser) ----------
-  socket.on("terminal-output", ({ deviceId, data }) => {
-    if (viewers[deviceId]) {
-      for (const v of viewers[deviceId]) {
-        v.emit("terminal-output", { deviceId, data });
-      }
-    }
-  });
-
-  // ---------- STATUS UPDATE (Pi → Dashboard) ----------
+  // ----- STATUS UPDATE -----
   socket.on("STATUS_UPDATE", (payload) => {
     const { deviceId } = payload;
-
-    if (viewers[deviceId]) {
-      for (const v of viewers[deviceId]) {
-        v.emit("STATUS_UPDATE", payload);
-      }
-    }
+    viewers[deviceId]?.forEach((v) => v.emit("STATUS_UPDATE", payload));
   });
 
-  // ---------- RECORDING CONTROL ----------
+  // ----- REQUEST STATUS -----
+  socket.on("REQUEST_STATUS", ({ deviceId }) => {
+    deviceSockets[deviceId]?.emit("REQUEST_STATUS");
+  });
+
+  // ----- RECORDING CONTROL -----
   socket.on("START_RECORDING", (payload) => {
-    const { deviceId } = payload || {};
-    if (devices[deviceId]) {
-      devices[deviceId].emit("START_RECORDING", payload);
-    }
+    deviceSockets[payload.deviceId]?.emit("START_RECORDING", payload);
   });
 
   socket.on("STOP_RECORDING", ({ deviceId }) => {
-    if (devices[deviceId]) {
-      devices[deviceId].emit("STOP_RECORDING");
-    }
+    deviceSockets[deviceId]?.emit("STOP_RECORDING");
   });
-  socket.on("REQUEST_STATUS", (payload) => {
-    const { deviceId } = payload;
-    if (devices[deviceId]) {
-      devices[deviceId].emit("REQUEST_STATUS", payload);
-    }
-  });
+
+  // ----- RECORDINGS LIST -----
   socket.on("RECORDINGS_LIST", (payload) => {
-    const { deviceId } = payload;
-
-    if (viewers[deviceId]) {
-      viewers[deviceId].forEach((viewer) => {
-        viewer.emit("RECORDINGS_LIST", payload);
-      });
-    }
+    viewers[payload.deviceId]?.forEach((v) =>
+      v.emit("RECORDINGS_LIST", payload),
+    );
   });
 
-  // ---------- DISCONNECT (CRITICAL FIX) ----------
+  // ----- DISCONNECT -----
   socket.on("disconnect", () => {
-    // Only device socket can mark device offline
     if (socket.role === "device" && socket.deviceId) {
-      if (devices[socket.deviceId] === socket) {
-        console.log("Device disconnected:", socket.deviceId);
-        delete devices[socket.deviceId];
-
-        if (viewers[socket.deviceId]) {
-          for (const v of viewers[socket.deviceId]) {
-            v.emit("device-offline", socket.deviceId);
-          }
-        }
+      if (deviceSockets[socket.deviceId] === socket) {
+        delete deviceSockets[socket.deviceId];
+        viewers[socket.deviceId]?.forEach((v) =>
+          v.emit("device-offline", socket.deviceId),
+        );
+        console.log("Device offline:", socket.deviceId);
       }
     }
 
-    // Viewer cleanup ONLY
     if (socket.role === "viewer" && socket.watchDevice) {
       viewers[socket.watchDevice]?.delete(socket);
     }
@@ -146,12 +106,7 @@ io.on("connection", (socket) => {
 });
 
 // ---------- HTTP ----------
-app.get("/", (_, res) => {
-  res.send("Secure Pi Relay Running");
-});
+app.get("/", (_, res) => res.send("Secure Pi Relay Running"));
 
-// ---------- START ----------
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log("Relay listening on", PORT);
-});
+server.listen(PORT, () => console.log("Relay listening on", PORT));
