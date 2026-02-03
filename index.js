@@ -49,7 +49,10 @@ io.on("connection", (socket) => {
 
   /* ----- status update ----- */
   socket.on("STATUS_UPDATE", (payload) => {
-    viewers[payload.deviceId]?.forEach((v) => v.emit("STATUS_UPDATE", payload));
+    const { deviceId } = payload;
+    if (viewers[deviceId]) {
+      viewers[deviceId].forEach((v) => v.emit("STATUS_UPDATE", payload));
+    }
   });
 
   /* ----- request status ----- */
