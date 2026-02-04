@@ -16,14 +16,14 @@ const devices = {}; // deviceId → socket
 const viewers = {}; // deviceId → Set<socket>
 
 /* ---------- auth ---------- */
-io.use((socket, next) => {
-  const token = socket.handshake.query?.token || socket.handshake.auth?.token;
+// io.use((socket, next) => {
+//   const token = socket.handshake.query?.token || socket.handshake.auth?.token;
 
-  if (token !== RELAY_TOKEN) {
-    return next(new Error("unauthorized"));
-  }
-  next();
-});
+//   if (token !== RELAY_TOKEN) {
+//     return next(new Error("unauthorized"));
+//   }
+//   next();
+// });
 
 /* ---------- socket ---------- */
 io.on("connection", (socket) => {
