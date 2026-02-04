@@ -16,7 +16,9 @@ const viewers = {}; // deviceId → Set<socket>
 
 /* ---------- auth ---------- */
 io.use((socket, next) => {
-  if (socket.handshake.auth?.token !== RELAY_TOKEN) {
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+  if (token !== RELAY_TOKEN) {
     return next(new Error("unauthorized"));
   }
   next();
