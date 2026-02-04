@@ -4,7 +4,10 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" },
+  allowEIO3: true,
+});
 
 const RELAY_TOKEN = process.env.RELAY_TOKEN || "piR3m0t3_9f8a2c4d_token";
 
