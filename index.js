@@ -7,6 +7,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
   allowEIO3: true,
+  transports: ["polling", "websocket"],
 });
 
 const RELAY_TOKEN = process.env.RELAY_TOKEN || "piR3m0t3_9f8a2c4d_token";
@@ -16,7 +17,7 @@ const viewers = {}; // deviceId → Set<socket>
 
 /* ---------- auth ---------- */
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+  const token = socket.handshake.query?.token || socket.handshake.auth?.token;
 
   if (token !== RELAY_TOKEN) {
     return next(new Error("unauthorized"));
