@@ -1,4 +1,3 @@
-// index.js
 const http = require("http");
 const WebSocket = require("ws");
 
@@ -9,7 +8,7 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server });
 
-const devices = new Map(); // deviceId -> ws
+const devices = new Map(); // deviceId -> pi ws
 
 wss.on("connection", (ws) => {
   ws.on("message", (raw) => {
@@ -20,7 +19,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Pi registers
+    // --------------------
+    // PI REGISTRATION
+    // --------------------
     if (msg.type === "register") {
       ws.role = "pi";
       ws.deviceId = msg.deviceId;
@@ -29,7 +30,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Client attaches
+    // --------------------
+    // CLIENT ATTACH
+    // --------------------
     if (msg.type === "attach") {
       const pi = devices.get(msg.deviceId);
       if (!pi) {
@@ -43,13 +46,22 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Client sends command
-    if (msg.type === "cmd" && ws.role === "client" && ws.targetPi) {
+    // --------------------
+    // CLIENT → PI (INPUT)
+    // --------------------
+    if (msg.type === "input" && ws.role === "client" && ws.targetPi) {
       ws.targetPi.send(JSON.stringify(msg));
       return;
     }
 
-    // Pi sends output
+    if (msg.type === "resize" && ws.role === "client" && ws.targetPi) {
+      ws.targetPi.send(JSON.stringify(msg));
+      return;
+    }
+
+    // --------------------
+    // PI → CLIENT (OUTPUT)
+    // --------------------
     if (msg.type === "output" && ws.role === "pi" && ws.client) {
       ws.client.send(JSON.stringify(msg));
       return;
