@@ -1,6 +1,9 @@
 const http = require("http");
 const WebSocket = require("ws");
-
+/* ---------- AUTH ---------- */
+const DEVICE_TOKENS = {
+  "pi-001": "SECRET_PI_001_TOKEN", // Remove the environment variable check
+};
 /* ---------- SAFETY ---------- */
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
@@ -11,9 +14,6 @@ process.on("unhandledRejection", (err) => {
 });
 
 /* ---------- AUTH ---------- */
-const DEVICE_TOKENS = {
-  "pi-001": process.env.PI_001_TOKEN || "SECRET_PI_001_TOKEN",
-};
 
 /* ---------- SERVER ---------- */
 const server = http.createServer((req, res) => {
