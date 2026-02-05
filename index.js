@@ -8,37 +8,34 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocket.Server({ server });
-
 const devices = new Map(); // deviceId -> ws
 
 wss.on("connection", (ws) => {
-  ws.on("message", (msg) => {
-    let data;
+  ws.on("message", (raw) => {
+    let msg;
     try {
-      data = JSON.parse(msg.toString());
+      msg = JSON.parse(raw.toString());
     } catch {
       return;
     }
 
-    // Pi registration
-    if (data.type === "register") {
+    if (msg.type === "register") {
       ws.role = "pi";
-      ws.deviceId = data.deviceId;
-      devices.set(data.deviceId, ws);
-      console.log("Pi registered:", data.deviceId);
+      ws.deviceId = msg.deviceId;
+      devices.set(msg.deviceId, ws);
+      console.log("Pi registered:", msg.deviceId);
       return;
     }
 
-    // Client attach
-    if (data.type === "attach") {
-      const pi = devices.get(data.deviceId);
+    if (msg.type === "attach") {
+      const pi = devices.get(msg.deviceId);
       if (!pi) {
         ws.send(JSON.stringify({ type: "error", message: "Pi not found" }));
         return;
       }
       ws.role = "client";
       ws.targetPi = pi;
-      console.log("Client attached to:", data.deviceId);
+      console.log("Client attached:", msg.deviceId);
       return;
     }
   });
