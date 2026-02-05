@@ -1,41 +1,56 @@
-// relay.js
+// index.js
+const http = require("http");
 const WebSocket = require("ws");
 
-const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("Relay alive");
+});
+
+const wss = new WebSocket.Server({ server });
 
 const devices = new Map(); // deviceId -> ws
-const clients = new Map(); // ws -> deviceId
 
 wss.on("connection", (ws) => {
   ws.on("message", (msg) => {
     let data;
     try {
-      data = JSON.parse(msg);
+      data = JSON.parse(msg.toString());
     } catch {
       return;
     }
 
-    if (data.type === "register" && data.role === "pi") {
-      devices.set(data.deviceId, ws);
+    // Pi registration
+    if (data.type === "register") {
+      ws.role = "pi";
       ws.deviceId = data.deviceId;
+      devices.set(data.deviceId, ws);
+      console.log("Pi registered:", data.deviceId);
       return;
     }
 
+    // Client attach
     if (data.type === "attach") {
       const pi = devices.get(data.deviceId);
-      if (!pi) return;
-      clients.set(ws, data.deviceId);
-      ws.pi = pi;
+      if (!pi) {
+        ws.send(JSON.stringify({ type: "error", message: "Pi not found" }));
+        return;
+      }
+      ws.role = "client";
+      ws.targetPi = pi;
+      console.log("Client attached to:", data.deviceId);
       return;
-    }
-
-    if (data.type === "cmd" && ws.pi) {
-      ws.pi.send(JSON.stringify(data));
     }
   });
 
   ws.on("close", () => {
-    if (ws.deviceId) devices.delete(ws.deviceId);
-    clients.delete(ws);
+    if (ws.role === "pi" && ws.deviceId) {
+      devices.delete(ws.deviceId);
+      console.log("Pi disconnected:", ws.deviceId);
+    }
   });
+});
+
+server.listen(process.env.PORT, () => {
+  console.log("Relay listening");
 });
