@@ -1,5 +1,8 @@
 const http = require("http");
 const WebSocket = require("ws");
+const DEVICE_TOKENS = {
+  "pi-001": "SECRET_PI_001_TOKEN",
+};
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -23,6 +26,10 @@ wss.on("connection", (ws) => {
     // PI REGISTRATION
     // --------------------
     if (msg.type === "register") {
+      if (DEVICE_TOKENS[msg.deviceId] !== msg.token) {
+        ws.close();
+        return;
+      }
       ws.role = "pi";
       ws.deviceId = msg.deviceId;
       devices.set(msg.deviceId, ws);
@@ -39,10 +46,14 @@ wss.on("connection", (ws) => {
         ws.send(JSON.stringify({ type: "error", message: "Pi not found" }));
         return;
       }
+      if (pi.client) {
+        ws.send(JSON.stringify({ type: "error", message: "Pi is flag" }));
+        return;
+      }
       ws.role = "client";
       ws.targetPi = pi;
       pi.client = ws;
-      console.log("Client attached:", msg.deviceId);
+      console.log("Client attached (locked):", msg.deviceId);
       return;
     }
 
@@ -69,6 +80,10 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    if (ws.role === "client" && ws.targetPi) {
+      ws.targetPi.client = null;
+      console.log("Client released Pi");
+    }
     if (ws.role === "pi" && ws.deviceId) {
       devices.delete(ws.deviceId);
       console.log("Pi disconnected:", ws.deviceId);
