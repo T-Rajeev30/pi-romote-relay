@@ -141,7 +141,9 @@ wss.on("connection", (ws) => {
     /* ---------- PI OUTPUT / EVENTS ---------- */
     if (
       ws.role === "pi" &&
-      (msg.type === "output" || msg.type === "recording_complete")
+      (msg.type === "output" ||
+        msg.type === "recording_complete" ||
+        msg.type === "upload_progress")
     ) {
       clients.forEach((client) => {
         if (client.deviceId === ws.deviceId) {
