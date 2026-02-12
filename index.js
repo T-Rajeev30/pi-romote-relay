@@ -20,42 +20,27 @@ const wss = new WebSocket.Server({
 
 /* ================= STATE ================= */
 
-const devices = new Map(); // deviceId → ws
-const clients = new Set(); // dashboard / backend clients
+// deviceId → ws
+const devices = new Map();
+
+// ws → deviceId (for clients)
+const clients = new Map();
 
 /* ================= UTILS ================= */
 
 function safeSend(ws, data) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  try {
-    ws.send(JSON.stringify(data));
-  } catch (e) {
-    console.error("Send error:", e.message);
-  }
+  ws.send(JSON.stringify(data));
 }
-
-/* ================= HEARTBEAT ================= */
-
-function heartbeat() {
-  this.isAlive = true;
-}
-
-const heartbeatInterval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (!ws.isAlive) {
-      console.log("Terminating dead connection");
-      return ws.terminate();
-    }
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, 30000);
 
 /* ================= CONNECTION ================= */
 
 wss.on("connection", (ws) => {
   ws.isAlive = true;
-  ws.on("pong", heartbeat);
+
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
 
   ws.on("message", (raw) => {
     let msg;
@@ -65,99 +50,101 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    /* ---------- PI REGISTER ---------- */
+    /* =================================================
+       DEVICE REGISTRATION
+    ================================================= */
+
     if (msg.type === "register") {
-      if (DEVICE_TOKENS[msg.deviceId] !== msg.token) {
-        console.log("Auth failed for:", msg.deviceId);
+      const { deviceId, token } = msg;
+
+      if (!DEVICE_TOKENS[deviceId] || DEVICE_TOKENS[deviceId] !== token) {
+        console.log("Auth failed for:", deviceId);
         return ws.close();
       }
 
-      const old = devices.get(msg.deviceId);
-      if (old) {
-        console.log("Replacing old Pi connection:", msg.deviceId);
-        old.terminate();
-      }
+      const old = devices.get(deviceId);
+      if (old) old.terminate();
 
-      ws.role = "pi";
-      ws.deviceId = msg.deviceId;
-      devices.set(msg.deviceId, ws);
+      ws.role = "device";
+      ws.deviceId = deviceId;
 
-      console.log("Pi authenticated:", msg.deviceId);
-      safeSend(ws, { type: "registered", deviceId: msg.deviceId });
+      devices.set(deviceId, ws);
+
+      console.log("Device registered:", deviceId);
+
+      safeSend(ws, { type: "registered", deviceId });
       return;
     }
 
-    /* ---------- CLIENT ATTACH ---------- */
+    /* =================================================
+       BACKEND ATTACH TO DEVICE
+    ================================================= */
+
     if (msg.type === "attach") {
-      const pi = devices.get(msg.deviceId);
-      if (!pi) {
+      const { deviceId } = msg;
+
+      const device = devices.get(deviceId);
+
+      if (!device) {
         safeSend(ws, { type: "error", message: "Pi not online" });
         return;
       }
 
       ws.role = "client";
-      ws.deviceId = msg.deviceId;
-      clients.add(ws);
+      ws.deviceId = deviceId;
 
-      safeSend(ws, { type: "attached", deviceId: msg.deviceId });
-      console.log("Client attached:", msg.deviceId);
+      clients.set(ws, deviceId);
+
+      console.log("Client attached to:", deviceId);
+
+      safeSend(ws, { type: "attached", deviceId });
       return;
     }
 
-    /* ---------- CLIENT RELEASE ---------- */
-    if (msg.type === "release") {
-      clients.delete(ws);
-      ws.deviceId = null;
-      console.log("Client released Pi");
-      return;
-    }
+    /* =================================================
+       COMMAND FROM BACKEND → DEVICE
+    ================================================= */
 
-    /* ---------- COMMAND → PI ---------- */
     if (msg.type === "command") {
-      const pi = devices.get(msg.deviceId);
-      if (!pi) {
-        console.log("Command target Pi not found:", msg.deviceId);
+      const { deviceId } = msg;
+
+      const device = devices.get(deviceId);
+
+      if (!device) {
+        safeSend(ws, { type: "error", message: "Pi not online" });
         return;
       }
 
-      safeSend(pi, msg);
-      console.log("Command forwarded to Pi:", msg.action, "→", msg.deviceId);
+      safeSend(device, msg);
+
+      console.log("Command forwarded:", msg.action, "→", deviceId);
       return;
     }
 
-    /* ---------- TERMINAL INPUT ---------- */
-    if (msg.type === "input") {
-      const pi = devices.get(ws.deviceId);
-      if (pi) safeSend(pi, msg);
-      return;
-    }
+    /* =================================================
+       DEVICE EVENTS → BACKEND
+    ================================================= */
 
-    if (msg.type === "resize") {
-      const pi = devices.get(ws.deviceId);
-      if (pi) safeSend(pi, msg);
-      return;
-    }
-
-    /* ---------- PI OUTPUT / EVENTS ---------- */
     if (
-      ws.role === "pi" &&
-      (msg.type === "output" ||
+      ws.role === "device" &&
+      (msg.type === "heartbeat" ||
         msg.type === "recording_complete" ||
         msg.type === "upload_progress")
     ) {
-      clients.forEach((client) => {
-        if (client.deviceId === ws.deviceId) {
-          safeSend(client, msg);
+      for (const [clientWs, attachedDeviceId] of clients.entries()) {
+        if (attachedDeviceId === ws.deviceId) {
+          safeSend(clientWs, msg);
         }
-      });
+      }
+
       return;
     }
   });
 
   ws.on("close", () => {
-    if (ws.role === "pi") {
+    if (ws.role === "device") {
       devices.delete(ws.deviceId);
-      console.log("Pi disconnected:", ws.deviceId);
+      console.log("Device disconnected:", ws.deviceId);
     }
 
     if (ws.role === "client") {
@@ -171,26 +158,22 @@ wss.on("connection", (ws) => {
   });
 });
 
-/* ================= SHUTDOWN ================= */
+/* ================= HEARTBEAT CHECK ================= */
 
-function shutdown() {
-  console.log("Shutting down relay...");
-  clearInterval(heartbeatInterval);
-
-  wss.clients.forEach((ws) => ws.close());
-  server.close(() => process.exit(0));
-
-  setTimeout(() => process.exit(1), 5000);
-}
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
 
 /* ================= START ================= */
 
 server.listen(PORT, () => {
-  console.log(`Relay listening on port ${PORT}`);
+  console.log("Relay listening on port", PORT);
   console.log(
-    `Registered devices: ${Object.keys(DEVICE_TOKENS).join(", ") || "none"}`,
+    "Registered devices:",
+    Object.keys(DEVICE_TOKENS).join(", ") || "none",
   );
 });
